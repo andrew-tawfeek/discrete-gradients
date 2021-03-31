@@ -1,0 +1,144 @@
+def rooting(graph,v):
+    EE = []
+    E = graph.edges()
+    for tuple in E:
+        if graph.distance(tuple[0],v) < graph.distance(tuple[1],v):
+            EE = EE + [(tuple[1],tuple[0])]
+        else:
+            EE = EE + [(tuple[0],tuple[1])]
+    return DiGraph(EE)
+
+from sage.graphs.connectivity import connected_components_subgraphs
+
+def MorseComplex(graph):
+    K = []
+    S = graph.spanning_trees(labels=False)
+    for T in S:
+        for J in list(powerset(graph.edges(labels=False)))[:-1]:
+            tempT = Graph(T.edges())
+            tempT.delete_edges(J) #deletes subsets of the edge set
+            conn_comps = connected_components_subgraphs(tempT) #list of all connected components (graph types), note still trees
+            vertex_prods = cartesian_product([ conn_comps[i].vertices() for i in range(len(conn_comps)) ]).list() #prod of vertex sets
+            for tuple in vertex_prods: #consider a tuple (v_1,...,v_n) in V(T1) x ... x V(Tn)
+                rooted_comps = [ rooting(conn_comps[i],tuple[i]) for i in range(len(conn_comps)) ] #rooting Ti at v_i
+                TT = rooted_comps[0]
+                for dir_tree in rooted_comps: #meant to take the union of all the rooted tree components
+                    TT = TT.union(dir_tree)
+                K = K + [TT.edges(labels=False)]
+    return SimplicialComplex(K)
+
+def listprod( listOfLists ): #does list product, thanks to Pfleuger
+	if len(listOfLists) == 0:
+		return [ [] ]
+	list0 = listOfLists[0]
+	res = []
+	for x in list0:
+		res += [ [x] + rest for rest in listprod(listOfLists[1:]) ]
+	return res
+
+def uniqueSDR(listOfLists): #necessary function, computers SDR
+  prods = listprod( listOfLists )
+  SDR = []
+  for L in prods:
+    L.sort()
+    if len(list(set(L))) == len(listOfLists):
+        SDR = SDR + [L]
+  res = []
+  [res.append(x) for x in SDR if x not in res]
+  return res
+
+def edgecyc(G): #necessary function, finds a fundamental cycle (in terms of edges)
+    edge_cycle_list = []
+    for vertex_cycle in G.cycle_basis():
+        L = []
+        for i in range(1,len(vertex_cycle)):
+            pair = [(min(vertex_cycle[i-1],vertex_cycle[i]),max(vertex_cycle[i-1],vertex_cycle[i]))]
+            L = L + pair
+        L = L + [(min(vertex_cycle[-1],vertex_cycle[0]),max(vertex_cycle[-1],vertex_cycle[0]))]
+        edge_cycle_list = edge_cycle_list + [L]
+    return edge_cycle_list
+
+def nonempty_pairs( Listoflists ):
+	res = []
+	for n in range(len(Listoflists)):
+		if n != len(Listoflists)-1:
+			for m in range(n+1, len(Listoflists)):
+				res = res + [list(set(Listoflists[n]) & set(Listoflists[m]))]
+	return res
+
+import itertools
+
+def findsubsets(L, n): #finds all k-subsets of L (outputs list of lists)
+    s = set(L)
+    return list(itertools.combinations(s, n))
+
+def analyzeSDR(G): #Input: graph, Output: # spanning trees, # SDR, # b1-faulty SDR, list of b1-faulty SDR
+    EC = edgecyc(G)
+    SDR_list = uniqueSDR(EC)
+    sptreecount = abs(G.laplacian_matrix().charpoly().coefficients(sparse=False)[1]//len(G.vertices(sort=True, key=None)))
+#    print("Number of spanning trees: " + str(  sptreecount ))
+    print("Number of SDRs: " + str(len(SDR_list)) )
+#    print("")
+    prob = []
+    for SDR in SDR_list:
+        H=Graph(G.edges())
+        H.delete_edges(SDR)
+        if len(H.cycle_basis()) > 0:
+            prob = prob + [SDR]
+    print("Problem SDRs: " + str(len(prob)))
+    pairs_collection = findsubsets(nonempty_pairs(EC), 3)
+    print("Faulty SDRs: " + str(len(pairs_collection)))
+
+
+    print("")
+    print("Conjecture status: " + str((len(SDR_list) - len(prob)) == sptreecount))
+#    for SDR in prob: #these lines print all the faulty SDR
+#        print(SDR)
+
+def bridge(G,H,vertex_of_G,vertex_of_H):
+    res = G.disjoint_union(H)
+    res.add_edge( (0,vertex_of_G),(1,vertex_of_H) )
+    return res
+
+def gluept(G,H,vertex_of_G,vertex_of_H): #glues at a point between graphs G and H by contracting a bridge
+    res = bridge(G,H,vertex_of_G,vertex_of_H)
+    res.contract_edge((0,vertex_of_G),(1,vertex_of_H))
+    return res
+
+def cycleglue(n,m,vertex_list):
+    if len(vertex_list) >= max(m,n):
+        return "Error: List has greater than or equal to cycle size. "
+    cycle1 = graphs.CycleGraph(max(m,n))
+    cycle2 = graphs.CycleGraph(min(m,n))
+    for i in range(len(vertex_list)):
+        if i == 0:
+            res = gluept(cycle1,cycle2,vertex_list[0],vertex_list[0])
+        else:
+            res.add_edge( (0,vertex_list[i]),(1,vertex_list[i]) )
+            res.contract_edge( (0,vertex_list[i]),(1,vertex_list[i]) )
+    return res
+
+def hasse(G): #where G is a graph
+    return SimplicialComplex(G.edges(labels=False)).face_poset().relabel().hasse_diagram().to_undirected()
+
+######################################################
+# Below is mainly some useful built-in iterms Sage has worth keeping in mind
+######################################################
+
+#graphs.PathGraph(8).laplacian_matrix().charpoly()
+#show(graphs.PathGraph(8))
+
+#G = graphs.PathGraph(5)
+#HG = SimplicialComplex(G.edges(labels=False)).face_poset().relabel().hasse_diagram().to_undirected() #Hasse diaram of G (as an undirected graph)
+
+#M = HG.matching_polynomial() #matching poly of H(G)
+#G.laplacian_matrix().charpoly() #char poly of lap matrix of G
+#HG.adjacency_matrix().charpoly() #char poly of adj matrix of H(G)
+
+
+#In the below, this returns all the matchings on a graph!
+
+#from sage.graphs.independent_sets import IndependentSets
+#G = graphs.PathGraph(5)
+#L_G=G.line_graph()
+#M=[x for x in IndependentSets(L_G)]

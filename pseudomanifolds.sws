@@ -1,0 +1,19 @@
+
+# Determine normality. If ret = True, then will return links failing pseudomanifoldness.
+# Does not check whether K itself is a pseudomanifold, just the links of cells of codim >= 2
+def is_normal(K, ret = False):
+    d = K.dimension()
+    failure = []
+    for i in range(0,d-2):
+        cells = list(K.cells()[i])
+        for x in cells:
+            if K.link(x).is_pseudomanifold() == False:
+                if ret == False:
+                    print("The link of " + str(x) + " is not a pseudomanifold.")
+                    return False
+                elif ret == True:
+                    failure = failure + [x]
+    if failure == []:
+        return True
+    else:
+        return failure

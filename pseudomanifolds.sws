@@ -17,3 +17,6 @@ def is_normal(K, ret = False):
         return True
     else:
         return failure
+
+
+

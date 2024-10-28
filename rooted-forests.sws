@@ -4,6 +4,11 @@ def apply(L,fn):
         res = res + [fn(elt)]
     return res
 
+
+# Input: Simplicial complex K (d-dimensional)
+# Output: All spanning forests (in the sense of [BK15])
+
+
 def SpanningForests(K): #gives all the SPANNING forests of a simplicial complex K
     zero_hom_grp = SimplicialComplex([0]).homology()[0]
     d = dim(K)
@@ -11,8 +16,6 @@ def SpanningForests(K): #gives all the SPANNING forests of a simplicial complex 
     co_K = K.chain_complex()
     third_cond = len(list(K.faces()[d])) - co_K.betti(d)
     possible_forests = [x for x in list(powerset(faceList)) if len(x) == third_cond]
-    #possible_forests = list(powerset(faceList))
-    #possible_forests.remove([])
     res = []
     for j in range(len(possible_forests)):
         facet_list = possible_forests[j]
@@ -21,8 +24,12 @@ def SpanningForests(K): #gives all the SPANNING forests of a simplicial complex 
             res = res + [facet_list]
     return res
 
+# Input: Triple (F,K,d) of a simplicial complex K dimension n, subset F of d-cells of K, dimension 0<=d<=n
+# Output: Boolean True/False whether F is a forest of K
 
-def is_forest(F,K,d): #for checking if F (subset of d-faces) is a forest of a complex K (dimensional)
+# Description: Checks whether the corresponding columns of \partial_d^F are independent
+
+def is_forest(F,K,d):
     B = K.chain_complex().differential(d)
     kept_rows = apply(F,list(K.faces()[d]).index)
     corresponding_columns = [vector(QQ,list(B.columns()[n])) for n in kept_rows]
@@ -32,11 +39,12 @@ def is_forest(F,K,d): #for checking if F (subset of d-faces) is a forest of a co
     else:
         return False
 
+# Input: Pair (R,G) where G is a d-dimensional simplicial complex (forest -- not checked?) and R subset of (d-1)-cells
+# Output: Boolean True/False on whether R is indeed a root of G
 
-#checks if R is a d-dimensional root of G (note: G is usually a forest, R subset of d-1 faces of complex G)
+# Note: Does not check whether G is indeed a forest to save comnputational resources. Can be done by adding an is_forest check.
+
 def is_root(R,G):
-    #if d != dim(G):   #this doesnt seem necc. as G will usually be a forest that surely contains R
-    #    G = SimplicialComplex(G.faces()[d])
     d = dim(G)
     R_bar = list(G.faces()[d-1])
     for cell in R:
@@ -52,40 +60,20 @@ def is_root(R,G):
     elif keyB.is_invertible():  #techically transpose of keyB, but this is an equivalent condition
         return True
 
-#returns d-dimensional forests F of a subcomplex of K (output is a list of faces)
+# Input: Pair (K,d) of simplicial complex K (of dimension n) and dimension 0<=d<=n
+# Output: List of all d-dimensional forests F of K
+
+# Note: Could use some optimization if intended to be used for large complexes.
+
 def all_forests(K,d):
     faceList = K.faces()[d]
-    possible_forests = list(powerset(faceList))[1:] #the [1:] omits first element, the empty list -- TODO: optimize later
+    possible_forests = list(powerset(faceList))[1:] 
     res =[]
     for F in possible_forests:
         if is_forest(F,K,d):
             res = res + [F]
     return res
-
-
-#TODO TODO TODO TODO TODO TODO: Check this code works according with the numbers computed by Klivans in her paper!
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
 
 
 #TODO: Fix below. Proper roots aren't getting returned. (Error with is_root function?)
@@ -103,6 +91,18 @@ def all_roots(F):
 
 
 #K.homology(1,subcomplex=S) #relative homology!!
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

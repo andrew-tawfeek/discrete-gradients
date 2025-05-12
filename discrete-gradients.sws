@@ -359,3 +359,10 @@ def boxedregion2(K,d,n): #complex K, dimension Laplacian d, coeff of x^n
 
 #returns LIST of acyclic matchings with those conditions
 #can go through list (within list?) checking that c_2 (e.g) many 2-dim cells (i.e. 3-tuples) are omitted?
+
+
+
+##### NEW (5/12/2025)
+
+def easycplx(cell_list): #for the lazy, takes [123,456] and understands what complex this is
+    return SimplicialComplex([[eval(x) for x in str(y)] for y in cell_list])

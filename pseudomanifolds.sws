@@ -20,3 +20,656 @@ def is_normal(K, ret = False):
 
 
 
+#OFFICIAL FILE.
+def apply(L,fn):
+    res = []
+    for elt in L:
+        res = res + [fn(elt)]
+    return res
+
+def SizeOfComplex(K):
+    res = 0
+    for n in range(0,dim(K)+1):
+        res = res + len(K.faces()[n])
+    return res
+
+def evenLaplacian(K,d): #2nd var is dimension, this is EVEN Lap bet. d and d-1, linear map on C_(d-1) to itself
+    co_K = K.chain_complex()
+    return co_K.differential(d)*co_K.differential(d).transpose()
+
+def oddLaplacian(K,d): #2nd var is dimension, this is ODD Lap bet. d and d-1, linear map on C_(d) to itself
+    co_K = K.chain_complex()
+    return co_K.differential(d).transpose()*co_K.differential(d)
+
+def Laplacian(K,d):
+    return evenLaplacian(K,d+1) + oddLaplacian(K,d)
+
+from sage.graphs.independent_sets import IndependentSets
+
+def acyclicmatchings(K): #takes input complex K and returns list of acyclic matchings, esentially all possible gradients on K
+    hasse_graph = K.face_poset().hasse_diagram().to_directed().reverse()
+    hasse_graph = DiGraph(hasse_graph.edges(labels=False))
+    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))] #needs each element ordered higher to lower dim
+    HG = DiGraph(hasse_graph.edges()) #the graph to-be-messed-with, other is holder
+    res = []
+    for matching in all_matchings:
+        clean_matching = []
+        for path in matching:
+            if len(path[0]) < len(path[1]):
+                clean_matching = clean_matching + [path[::-1]]
+            else:
+                clean_matching = clean_matching + [path]
+        HG.reverse_edges(clean_matching)
+        if HG.is_directed_acyclic() == True:
+            res = res + [clean_matching]
+        HG = DiGraph(hasse_graph.edges(labels=False))
+    return res
+
+
+from sage.graphs.independent_sets import IndependentSets
+
+def limited_acyclicmatchings(K,L):
+    P = K.face_poset()
+    ignored_levels = []
+    for n in range(len(L)):
+        if L[n] == len(K.faces()[n]): #if num crit cells is num faces, face to be deleted
+            ignored_levels = ignored_levels + [n]
+    kept_elements = []
+    for elt in list(P):
+        if not (P.rank(elt) in ignored_levels):
+            kept_elements = kept_elements + [elt]
+    hasse_graph = P.subposet(kept_elements).hasse_diagram().to_directed().reverse()
+    hasse_graph = DiGraph(hasse_graph.edges(labels=False))
+    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))] #needs each element ordered higher to lower dim
+    HG = DiGraph(hasse_graph.edges()) #the graph to-be-messed-with, other is holder
+    res = []
+    for matching in all_matchings:
+        clean_matching = []
+        for path in matching:
+            if len(path[0]) < len(path[1]):
+                clean_matching = clean_matching + [path[::-1]]
+            else:
+                clean_matching = clean_matching + [path]
+        HG.reverse_edges(clean_matching)
+        if HG.is_directed_acyclic() == True:
+            res = res + [clean_matching]
+        HG = DiGraph(hasse_graph.edges(labels=False))
+    return res
+
+#takes input complex K and list L = [n_0, n_1, n_2, ..., n_dimK]
+#where the critical vector is [K_0 - n_1, K_1 - n_2, ..., K_dim(K) - n_dim(K)]
+def gradients(K,L):
+    reversal = []
+    for k in range(len(L)):
+        reversal = reversal + [len(K.faces()[k]) - L[k]]
+    L = reversal
+    KE = K.euler_characteristic()
+    safety = 0
+    for k in range(0,len(L)):
+        safety = safety + (-1)^k*L[k]
+    if KE != safety:
+        print("Error: List does not satisfy Weak Morse Inequality. Euler characteristic is " + str(KE) + ".")
+        return
+    res = []
+    d = dim(K)
+    pool = limited_acyclicmatchings(K,L)
+    #num_cells_list = [len(K.faces()[n]) for n in [0..d]]
+    for matching in pool:
+        for n in range(0,d+1):
+            num_cells = len(K.faces()[n])
+            num_in_matching = len([tuple for tuple in matching if ((len(tuple[0]) == n+1) or (len(tuple[1]) == n+1))  ])
+            if L[n] != num_cells - num_in_matching: #checks correct num crit cells
+                break
+            elif n==d:
+                res = res + [matching]
+    return res
+
+
+
+
+
+
+
+def hasse_levels(K,L): #L is the list of levels desired (ideally adjacent)
+    P = K.face_poset()
+    cared_for = P.subposet([x for x in list(P) if (P.rank(x) in L)])
+    return cared_for
+
+
+
+
+##########
+#CONJECTURE CHECKING ITEMS BELOW
+##########
+
+def morse_set_vectors(K,d):
+    L = [0 .. dim(K)]
+    for n in L:
+        L[n] = len(K.faces()[n])
+    LOW = min(L[d],L[d-1])
+    res = list(range(LOW+1))
+    for n in range(LOW+1):
+        vec = []
+        for j in range(len(L)):
+            if j == d or j == d-1:
+                vec = vec + [L[j] - n]
+            else:
+                vec = vec + [L[j]]
+        res[n] = vec
+    #res.sort()
+    #res.reverse()
+    return res
+
+def limited_acyclicmatchings2(K,d):
+    P = K.face_poset()
+    ignored_levels = []
+    for n in range(dim(K)):
+        if n != d and n != d-1: #if num crit cells is num faces, face to be deleted
+            ignored_levels = ignored_levels + [n]
+    kept_elements = []
+    for elt in list(P):
+        if not (P.rank(elt) in ignored_levels):
+            kept_elements = kept_elements + [elt]
+    hasse_graph = P.subposet(kept_elements).hasse_diagram().to_directed().reverse()
+    hasse_graph = DiGraph(hasse_graph.edges(labels=False))
+    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))] #needs each element ordered higher to lower dim
+    HG = DiGraph(hasse_graph.edges()) #the graph to-be-messed-with, other is holder
+    res = []
+    for matching in all_matchings:
+        clean_matching = []
+        for path in matching:
+            if len(path[0]) < len(path[1]):
+                clean_matching = clean_matching + [path[::-1]]
+            else:
+                clean_matching = clean_matching + [path]
+        HG.reverse_edges(clean_matching)
+        if HG.is_directed_acyclic() == True:
+            res = res + [clean_matching]
+        HG = DiGraph(hasse_graph.edges(labels=False))
+    return res
+
+
+def strainer(K,d,pool,vec):
+    res = []
+    d = dim(K)
+    for matching in pool:
+        for n in range(0,d+1):
+            num_cells = len(K.faces()[n])
+            num_in_matching = len([tuple for tuple in matching if ((len(tuple[0]) == n+1) or (len(tuple[1]) == n+1))  ])
+            if vec[n] != num_cells - num_in_matching: #checks correct num crit cells
+                break
+            elif n==d:
+                res = res + [matching]
+    return res
+
+def grad_list(K,d):
+    vec_list = morse_set_vectors(K,d)
+    #pool = limited_acyclicmatchings(K)
+    grads = []
+    pool = limited_acyclicmatchings2(K,d)
+    for k in range(len(vec_list)):
+        vec = vec_list[k]
+        res = strainer(K,d,pool,vec)
+        grads = grads + [len(res)]
+    return grads
+
+def evenLap_coeff(K,d):
+    poly = evenLaplacian(K,d).charpoly().coefficients(sparse=False)
+    poly.reverse()
+    return apply(poly,abs)
+
+def checker(K,d):
+    L1 = evenLap_coeff(K,d)
+    L2 = grad_list(K,d)
+    for n in range(min(len(L1),len(L2))):
+        if L1[n] != L2[n]:
+            #print(str(L1))
+            #print(str(L2))
+            return False
+    #print(str(L1))
+    #print(str(L2))
+    return True
+
+
+
+
+
+
+
+
+def conj_checker(K):
+    fails = []
+    status = True
+    for d in [1 .. dim(K)]:
+        if checker(K,d) == False:
+            status = False
+            fails = fails + [d]
+            #print("Failure for dimension d = " + str(d) + ":")
+            #print("")
+    return [status,fails]
+
+
+def poset_iterator(n): #iterates over order complexes of all possible posets on n-many elements
+    resevoir = posets(n)
+    print("Will check " + str(len(resevoir)) + " posets.")
+    for k in range(len(resevoir)):
+        K = resevoir[k].order_complex()
+        res = conj_checker(K)
+        if res[0] == False:
+            print("Failure on poset " + str(k) + ". Dimension: " + str(dim(K)) + ". Errors in following dimensions:" + str(res[1]))
+        elif res[0] == True:
+            print("Success for poset " + str(k) + ".")
+        #print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        #print("Checking poset " + str(k) + " in list.")
+        #print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        #K = resevoir[k].order_complex()
+        #conj_checker(K)
+    return
+
+
+
+
+
+
+
+
+#for returning list (of lists) of all cells of K, for input into topaz
+def topaz(K):
+    res = []
+    for n in range(dim(K)+1):
+        res = res + apply(list(K.faces()[n]),list)
+    print("$s = new SimplicialComplex(INPUT_FACES=>" + str(res) + ");")
+    print("$s->VISUAL;")
+    return
+
+
+
+
+
+
+
+
+
+
+
+#x = S[5][1]
+#F = x[0]
+#R = x[1]
+#rootedForest_hasse(x[0],x[1],im = True)
+
+
+
+
+
+
+
+
+
+
+#show(posets(3)[1].hasse_diagram())
+
+
+
+
+##########
+#UNNECCESARY
+##########
+
+def boxedregion(K,d,num_matching): #input: complex K, dimension (for Laplacian) d, num matchings in boxed range [rem.]
+    P = K.face_poset() #output: all acyclic matchings occuring in red box
+    keepers = []
+    for elt in list(P):
+        if ((P.rank(elt) == d) or (P.rank(elt) == d-1) or (P.rank(elt) == d-2)):
+            keepers = keepers +[elt]
+    hasse_graph = P.subposet(keepers).hasse_diagram().to_directed().reverse() #here on, the code from acyclicmatchings is copied
+    hasse_graph = DiGraph(hasse_graph.edges(labels=False))
+    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))] #needs each element ordered higher to lower dim
+    HG = DiGraph(hasse_graph.edges()) #the graph to-be-messed-with, other is holder -- beyond here acyclicity is checked
+    res = []
+    for matching in all_matchings:
+        clean_matching = []
+        for path in matching:
+            if len(path[0]) < len(path[1]):
+                clean_matching = clean_matching + [path[::-1]]
+            else:
+                clean_matching = clean_matching + [path]
+        HG.reverse_edges(clean_matching)
+        if HG.is_directed_acyclic() == True:
+            res = res + [clean_matching]
+        HG = DiGraph(hasse_graph.edges(labels=False))
+    corrected_res = [x for x in res if len(x) == num_matching]
+    return corrected_res
+
+
+
+def boxedregion2(K,d,n): #complex K, dimension Laplacian d, coeff of x^n
+    P = K.face_poset()
+
+    keepers_higher = []
+    keepers_lower = []
+    for elt in list(P):
+        if ((P.rank(elt) == d) or (P.rank(elt) == d-1)):
+            keepers_higher = keepers_higher +[elt]
+        #if ((P.rank(elt) == d-1) or (P.rank(elt) == d-2)):
+        if False == True:
+            keepers_lower = keepers_lower +[elt]
+    keepers_total = list(set().union(keepers_higher,keepers_lower))
+    hasse_graph_higher = P.subposet(keepers_higher).hasse_diagram().to_directed().reverse()
+    hasse_graph_lower = P.subposet(keepers_lower).hasse_diagram().to_directed().reverse()
+    hasse_graph = P.subposet(keepers_total).hasse_diagram().to_directed().reverse()
+
+    all_matchings_higher = [x for x in IndependentSets(hasse_graph_higher.to_undirected().line_graph(labels=False)) if len(x) == n]
+    all_matchings_lower = [x for x in IndependentSets(hasse_graph_lower.to_undirected().line_graph(labels=False)) if len(x) == n]
+    all_matchings = all_matchings_higher + all_matchings_lower
+    HG = DiGraph(hasse_graph.edges()) #the graph to-be-messed-with, other is holder -- beyond here acyclicity is checked
+    res = []
+    for matching in all_matchings:
+        clean_matching = []
+        for path in matching:
+            if len(path[0]) < len(path[1]):
+                clean_matching = clean_matching + [path[::-1]]
+            else:
+                clean_matching = clean_matching + [path]
+        HG.reverse_edges(clean_matching)
+        if HG.is_directed_acyclic() == True:
+            res = res + [clean_matching]
+        HG = DiGraph(hasse_graph.edges(labels=False))
+    #corrected_res = [x for x in res if len(x) == n]
+    return res
+
+
+
+#returns LIST of acyclic matchings with those conditions
+#can go through list (within list?) checking that c_2 (e.g) many 2-dim cells (i.e. 3-tuples) are omitted?
+
+
+
+##### NEW (5/12/2025)
+
+def easycplx(cell_list): #for the lazy, takes [123,456] and understands what complex this is
+    return SimplicialComplex([[eval(x) for x in str(y)] for y in cell_list])
+
+def apply(L,fn):
+    res = []
+    for elt in L:
+        res = res + [fn(elt)]
+    return res
+
+
+# Input: Simplicial complex K (d-dimensional)
+# Output: All spanning forests (in the sense of [BK15])
+
+
+def SpanningForests(K): #gives all the SPANNING forests of a simplicial complex K
+    zero_hom_grp = SimplicialComplex([0]).homology()[0]
+    d = dim(K)
+    faceList = list(K.faces()[d])
+    co_K = K.chain_complex()
+    third_cond = len(list(K.faces()[d])) - co_K.betti(d)
+    possible_forests = [x for x in list(powerset(faceList)) if len(x) == third_cond]
+    res = []
+    for j in range(len(possible_forests)):
+        facet_list = possible_forests[j]
+        F_test = SimplicialComplex(facet_list)
+        if F_test.homology()[dim(K)] == zero_hom_grp:
+            res = res + [facet_list]
+    return res
+
+# Input: Triple (F,K,d) of a simplicial complex K dimension n, subset F of d-cells of K, dimension 0<=d<=n
+# Output: Boolean True/False whether F is a forest of K
+
+# Description: Checks whether the corresponding columns of \partial_d^F are independent
+
+def is_forest(F,K,d):
+    B = K.chain_complex().differential(d)
+    kept_rows = apply(F,list(K.faces()[d]).index)
+    corresponding_columns = [vector(QQ,list(B.columns()[n])) for n in kept_rows]
+    V = QQ^(len(B.rows()))
+    if len(V.linear_dependence(corresponding_columns)) == 0:
+        return True
+    else:
+        return False
+
+# Input: Pair (R,G) where G is a d-dimensional simplicial complex (forest -- not checked?) and R subset of (d-1)-cells
+# Output: Boolean True/False on whether R is indeed a root of G
+
+# Note: Does not check whether G is indeed a forest to save comnputational resources. Can be done by adding an is_forest check.
+
+def is_root(R,G):
+    d = dim(G)
+    R_bar = list(G.faces()[d-1])
+    for cell in R:
+        R_bar.remove(cell)
+    B = G.chain_complex().differential(d)
+    kept_rows = apply(R_bar,list(G.faces()[d-1]).index)
+    keyB_rows = []
+    for index in kept_rows:
+        keyB_rows = keyB_rows + [B.rows()[index]]
+    keyB = Matrix(keyB_rows)
+    if len(keyB.rows()) != len(keyB.columns()):
+        return False
+    elif keyB.is_invertible():  #techically transpose of keyB, but this is an equivalent condition
+        return True
+
+# Input: Pair (K,d) of simplicial complex K (of dimension n) and dimension 0<=d<=n
+# Output: List of all d-dimensional forests F of K
+
+# Note: Could use some optimization if intended to be used for large complexes.
+
+def all_forests(K,d):
+    faceList = K.faces()[d]
+    possible_forests = list(powerset(faceList))[1:] 
+    res =[]
+    for F in possible_forests:
+        if is_forest(F,K,d):
+            res = res + [F]
+    return res
+    
+
+
+#TODO: Fix below. Proper roots aren't getting returned. (Error with is_root function?)
+#returns all roots R (list of (d-1)-faces) of a forest F (subset of d-1 faces of complex G)
+def all_roots(F):
+    F = SimplicialComplex(F)
+    d = dim(F)
+    faceList = F.faces()[d-1]
+    possible_roots = list(powerset(faceList))[1:-1]
+    res = []
+    for R in possible_roots:
+        if is_root(R,F):
+            res = res + [R]
+    return res
+
+
+#K.homology(1,subcomplex=S) #relative homology!!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def rootedForests(K,d):
+    forestList = K.faces()[d]
+    rootList = K.faces()[d-1]
+    possible_forests = list(powerset(forestList))[1:]
+    possible_roots = list(powerset(rootList))[1:]
+    D = K.chain_complex().differential(d)
+    Ld = list(K.faces()[d])
+    Ld.sort()
+    L_d = list(K.faces()[d-1])
+    L_d.sort()
+    res = []
+    for F in possible_forests:
+        for R in possible_roots:
+            R_bar = list(K.faces()[d-1])
+            for cell in R:
+                R_bar.remove(cell)
+            if len(R_bar) == len(F): #|R_bar| = |F|
+                cols = []
+                for i in range(len(F)):
+                    cols = cols + [Ld.index(F[i])]
+                rows = []
+                for i in range(len(R_bar)):
+                    rows = rows + [L_d.index(R_bar[i])]
+                rows.sort()
+                cols.sort()
+                if D[rows,cols].det() != 0: #relative homology H_d(F,R) = 0
+                    F_res = apply(F,tuple)
+                    R_res = apply(R,tuple)
+                    F_res.sort()
+                    R_res.sort()
+                    res = res + [(F_res,R_res)] #apply function turns these from simplex cells to tuples in F and R, types in Sage
+    return res
+
+
+def rootedForestsCount(K,d):
+    S = rootedForests(K,d)
+    L = [0..len(K.faces()[d-1])]
+    for j in range(len(L)):
+        L[j] = len([x for x in S if len(x[1]) == j])
+    return L
+
+
+
+#[x for x in S[5] if not(x in G[5])]
+
+
+
+
+
+
+def rootedForestsList(K,d):
+    S = rootedForests(K,d)
+    L = [0..len(K.faces()[d-1])]
+    for j in range(len(L)):
+        L[j] = [x for x in S if len(x[1]) == j]
+    L.reverse()
+    return L
+
+
+#using grad_list_raw(K,d)[n] gives all the gradients of K corresponding to particular coeff. of Laplacian (explicitly note which eventually, TODO)
+def grad_list_raw(K,d):
+    vec_list = morse_set_vectors(K,d)
+    #pool = limited_acyclicmatchings(K)
+    grads = []
+    pool = limited_acyclicmatchings2(K,d)
+    for k in range(len(vec_list)):
+        vec = vec_list[k]
+        res = strainer(K,d,pool,vec)
+        grads = grads + [res]
+    return grads
+
+
+
+#TODO.
+#returns all the rooted d-forests coming from gradients, in the format of (F,R,G), where G is the gradient -- use fn[n] for induced forests with |F| = n
+def inducedRootedForests(K,d,remove_grads = False):
+    rawList = grad_list_raw(K,d)
+    rootCells = apply(list(K.faces()[d-1]),tuple)
+    res = []
+    for n in range(len(rawList)):
+        res_temp = []
+        gradient_list = rawList[n]
+        for grad in gradient_list:
+            induced_forest = []
+            for m in range(len(grad)):
+                induced_forest = induced_forest + [grad[m][0]]
+            induced_root = list(rootCells) #this is where it gets complicated, need to look at elts not in gradient
+            for m in range(len(grad)):
+                induced_root.remove(grad[m][1])
+            induced_forest.sort()
+            induced_root.sort()
+            if remove_grads == True:
+                res_temp = res_temp + [(induced_forest,induced_root)]
+            elif remove_grads == False:
+                res_temp = res_temp + [(induced_forest,induced_root,grad)] #where to decide whether or not to put grad as third argument
+        res = res + [res_temp]
+    return res
+
+
+#input rooted d-forest (F,R), returns \mathcal{H}_{(F,R)}, optional third argument when True provides image
+def rootedForest_hasse(F,R,im = False):
+    d = len(F[0])-1
+    K = SimplicialComplex(F)
+    H = hasse_levels(K,[d-1,d])
+    H_elts = []
+    for n in range(d-1,d+1):
+        H_elts = H_elts + apply(list(K.faces()[n]),list)
+    R = apply(R,list)
+    for cell in R:
+        if cell in H_elts:
+            H_elts.remove(cell)
+    H_elts = apply(H_elts,tuple)
+    res = H.subposet(H_elts)
+    if im == False:
+        return res
+    if im == True:
+        return plot(res.hasse_diagram().reverse())
+
+#M = SimplicialComplex([[0,1,4],[0,4,3],[4,3,2],[3,2,1],[2,1,0]])
+
+
+
+
+#use checker(K,d) first, see if "False", hence having a problematic forest
+def problems(K,d):
+    L = inducedRootedForests(K,d,True)
+    induced_list = []
+    for n in range(len(L)):
+        induced_list = induced_list + L[n]
+    rootedforest_list = rootedForests(K,d)
+    res = [x for x in rootedforest_list if x not in induced_list]
+    return res
+
+
+#K = SimplicialComplex([[1,2,3,4]])
+#d = 2
+
+#S = all_forests(K,d)
+#S = [F for F in S if len(F) == 2]
+#res = 0
+#for forest in S:
+#    res = res + len(all_roots(forest))
+#res
+
+
+#code for list of forests after setting L = proj_nice list
+#sage: for n in range(len(L)):
+#....:     print(str(n))
+#....:     rootedForest_hasse(L[n][0],L[n][1],True)
+#....:
+
+
+#for n in range(len(L)): rootedForest_hasse(L[n][0],L[n][1],True).save('/Users/atawfeek/Desktop/rooted_forests/' + str(n) + '.png')
+
+
+#to save outputted images in sage:
+# p = G.plot() #use this instead of show()
+# p.save('/Users/atawfeek/Desktop/test.png')
+
+
+def checker(K,d):
+    if str(type(K)) != "<class 'sage.topology.simplicial_complex.SimplicialComplex_with_category'>": #allows easy complex entry
+        K = easycplx(K)
+    gradients = grad_list(K,d)
+    char_poly = evenLap_coeff(K,d)[0:len(gradients)]
+    print(f"The gradient count is {gradients}.")
+    print(f"The coefficients of the characteristic polynomial of the {d}-dim Laplacian are {char_poly}.")
+    if gradients != char_poly:
+        print("")
+        print("Discrepancy detected!!") 
+        print("")
+        print("The non-collapsing rooted forestsare the following:")
+        print("")
+
+        for (forest,root) in problems(K,2):
+            print(f"The forest {forest} does not collapse onto {root}.")

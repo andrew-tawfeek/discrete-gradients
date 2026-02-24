@@ -8,17 +8,15 @@ def apply(L,fn):
 # Input: Simplicial complex K (d-dimensional)
 # Output: All spanning forests (in the sense of [BK15])
 
-
 def SpanningForests(K): #gives all the SPANNING forests of a simplicial complex K
     zero_hom_grp = SimplicialComplex([0]).homology()[0]
     d = dim(K)
     faceList = list(K.faces()[d])
     co_K = K.chain_complex()
-    third_cond = len(list(K.faces()[d])) - co_K.betti(d)
+    third_cond = len(faceList) - co_K.betti(d)
     possible_forests = [x for x in list(powerset(faceList)) if len(x) == third_cond]
     res = []
-    for j in range(len(possible_forests)):
-        facet_list = possible_forests[j]
+    for facet_list in possible_forests:
         F_test = SimplicialComplex(facet_list)
         if F_test.homology()[dim(K)] == zero_hom_grp:
             res = res + [facet_list]
@@ -34,10 +32,7 @@ def is_forest(F,K,d):
     kept_rows = apply(F,list(K.faces()[d]).index)
     corresponding_columns = [vector(QQ,list(B.columns()[n])) for n in kept_rows]
     V = QQ^(len(B.rows()))
-    if len(V.linear_dependence(corresponding_columns)) == 0:
-        return True
-    else:
-        return False
+    return len(V.linear_dependence(corresponding_columns)) == 0
 
 # Input: Pair (R,G) where G is a d-dimensional simplicial complex (forest -- not checked?) and R subset of (d-1)-cells
 # Output: Boolean True/False on whether R is indeed a root of G
@@ -51,9 +46,7 @@ def is_root(R,G):
         R_bar.remove(cell)
     B = G.chain_complex().differential(d)
     kept_rows = apply(R_bar,list(G.faces()[d-1]).index)
-    keyB_rows = []
-    for index in kept_rows:
-        keyB_rows = keyB_rows + [B.rows()[index]]
+    keyB_rows = [B.rows()[index] for index in kept_rows]
     keyB = Matrix(keyB_rows)
     if len(keyB.rows()) != len(keyB.columns()):
         return False
@@ -67,13 +60,12 @@ def is_root(R,G):
 
 def all_forests(K,d):
     faceList = K.faces()[d]
-    possible_forests = list(powerset(faceList))[1:] 
-    res =[]
+    possible_forests = list(powerset(faceList))[1:]
+    res = []
     for F in possible_forests:
         if is_forest(F,K,d):
             res = res + [F]
     return res
-    
 
 
 #TODO: Fix below. Proper roots aren't getting returned. (Error with is_root function?)
@@ -93,19 +85,6 @@ def all_roots(F):
 #K.homology(1,subcomplex=S) #relative homology!!
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 def rootedForests(K,d):
     forestList = K.faces()[d]
     rootList = K.faces()[d-1]
@@ -123,12 +102,8 @@ def rootedForests(K,d):
             for cell in R:
                 R_bar.remove(cell)
             if len(R_bar) == len(F): #|R_bar| = |F|
-                cols = []
-                for i in range(len(F)):
-                    cols = cols + [Ld.index(F[i])]
-                rows = []
-                for i in range(len(R_bar)):
-                    rows = rows + [L_d.index(R_bar[i])]
+                cols = [Ld.index(F[i]) for i in range(len(F))]
+                rows = [L_d.index(R_bar[i]) for i in range(len(R_bar))]
                 rows.sort()
                 cols.sort()
                 if D[rows,cols].det() != 0: #relative homology H_d(F,R) = 0
@@ -148,12 +123,7 @@ def rootedForestsCount(K,d):
     return L
 
 
-
 #[x for x in S[5] if not(x in G[5])]
-
-
-
-
 
 
 def rootedForestsList(K,d):
@@ -178,7 +148,6 @@ def grad_list_raw(K,d):
     return grads
 
 
-
 #TODO.
 #returns all the rooted d-forests coming from gradients, in the format of (F,R,G), where G is the gradient -- use fn[n] for induced forests with |F| = n
 def inducedRootedForests(K,d,remove_grads = False):
@@ -189,17 +158,15 @@ def inducedRootedForests(K,d,remove_grads = False):
         res_temp = []
         gradient_list = rawList[n]
         for grad in gradient_list:
-            induced_forest = []
-            for m in range(len(grad)):
-                induced_forest = induced_forest + [grad[m][0]]
+            induced_forest = [grad[m][0] for m in range(len(grad))]
             induced_root = list(rootCells) #this is where it gets complicated, need to look at elts not in gradient
             for m in range(len(grad)):
                 induced_root.remove(grad[m][1])
             induced_forest.sort()
             induced_root.sort()
-            if remove_grads == True:
+            if remove_grads:
                 res_temp = res_temp + [(induced_forest,induced_root)]
-            elif remove_grads == False:
+            else:
                 res_temp = res_temp + [(induced_forest,induced_root,grad)] #where to decide whether or not to put grad as third argument
         res = res + [res_temp]
     return res
@@ -219,14 +186,11 @@ def rootedForest_hasse(F,R,im = False):
             H_elts.remove(cell)
     H_elts = apply(H_elts,tuple)
     res = H.subposet(H_elts)
-    if im == False:
+    if not im:
         return res
-    if im == True:
-        return plot(res.hasse_diagram().reverse())
+    return plot(res.hasse_diagram().reverse())
 
 M = SimplicialComplex([[0,1,4],[0,4,3],[4,3,2],[3,2,1],[2,1,0]])
-
-
 
 
 #use checker(K,d) first, see if "False", hence having a problematic forest
@@ -250,16 +214,12 @@ def problems(K,d):
 #    res = res + len(all_roots(forest))
 #res
 
-
 #code for list of forests after setting L = proj_nice list
 #sage: for n in range(len(L)):
 #....:     print(str(n))
 #....:     rootedForest_hasse(L[n][0],L[n][1],True)
-#....:
-
 
 #for n in range(len(L)): rootedForest_hasse(L[n][0],L[n][1],True).save('/Users/atawfeek/Desktop/rooted_forests/' + str(n) + '.png')
-
 
 #to save outputted images in sage:
 # p = G.plot() #use this instead of show()

@@ -1,11 +1,13 @@
 def rooting(graph, v):
+    # Precompute shortest-path distances once instead of per-edge
+    dist = graph.shortest_path_lengths(v)
     EE = []
     E = graph.edges()
     for tuple in E:
-        if graph.distance(tuple[0], v) < graph.distance(tuple[1], v):
-            EE = EE + [(tuple[1], tuple[0])]
+        if dist[tuple[0]] < dist[tuple[1]]:
+            EE.append((tuple[1], tuple[0]))
         else:
-            EE = EE + [(tuple[0], tuple[1])]
+            EE.append((tuple[0], tuple[1]))
     return DiGraph(EE)
 
 from sage.graphs.connectivity import connected_components_subgraphs
@@ -13,8 +15,10 @@ from sage.graphs.connectivity import connected_components_subgraphs
 def MorseComplex(graph):
     K = []
     S = graph.spanning_trees(labels=False)
+    # Cache edge powerset once instead of recomputing per spanning tree
+    edge_subsets = list(powerset(graph.edges(labels=False)))[:-1]
     for T in S:
-        for J in list(powerset(graph.edges(labels=False)))[:-1]:
+        for J in edge_subsets:
             tempT = Graph(T.edges())
             tempT.delete_edges(J)
             conn_comps = connected_components_subgraphs(tempT)
@@ -22,9 +26,9 @@ def MorseComplex(graph):
             for tuple in vertex_prods:
                 rooted_comps = [rooting(conn_comps[i], tuple[i]) for i in range(len(conn_comps))]
                 TT = rooted_comps[0]
-                for dir_tree in rooted_comps:
+                for dir_tree in rooted_comps[1:]:
                     TT = TT.union(dir_tree)
-                K = K + [TT.edges(labels=False)]
+                K.append(TT.edges(labels=False))
     return SimplicialComplex(K)
 
 def listprod(listOfLists): #does list product, thanks to Pfleuger
@@ -41,11 +45,15 @@ def uniqueSDR(listOfLists): #necessary function, computers SDR
     SDR = []
     for L in prods:
         L.sort()
-        if len(list(set(L))) == len(listOfLists):
-            SDR = SDR + [L]
+        if len(set(L)) == len(listOfLists):
+            SDR.append(L)
+    # Use a set of tuples for O(1) deduplication instead of O(n) list scan
+    seen = set()
     res = []
     for x in SDR:
-        if x not in res:
+        key = tuple(x)
+        if key not in seen:
+            seen.add(key)
             res.append(x)
     return res
 
@@ -54,18 +62,18 @@ def edgecyc(G): #necessary function, finds a fundamental cycle (in terms of edge
     for vertex_cycle in G.cycle_basis():
         L = []
         for i in range(1, len(vertex_cycle)):
-            pair = [(min(vertex_cycle[i-1], vertex_cycle[i]), max(vertex_cycle[i-1], vertex_cycle[i]))]
-            L = L + pair
-        L = L + [(min(vertex_cycle[-1], vertex_cycle[0]), max(vertex_cycle[-1], vertex_cycle[0]))]
-        edge_cycle_list = edge_cycle_list + [L]
+            L.append((min(vertex_cycle[i-1], vertex_cycle[i]), max(vertex_cycle[i-1], vertex_cycle[i])))
+        L.append((min(vertex_cycle[-1], vertex_cycle[0]), max(vertex_cycle[-1], vertex_cycle[0])))
+        edge_cycle_list.append(L)
     return edge_cycle_list
 
 def nonempty_pairs(Listoflists):
+    # Precompute sets once instead of converting per-pair
+    sets = [set(L) for L in Listoflists]
     res = []
-    for n in range(len(Listoflists)):
-        if n != len(Listoflists) - 1:
-            for m in range(n + 1, len(Listoflists)):
-                res = res + [list(set(Listoflists[n]) & set(Listoflists[m]))]
+    for n in range(len(Listoflists) - 1):
+        for m in range(n + 1, len(Listoflists)):
+            res.append(list(sets[n] & sets[m]))
     return res
 
 import itertools
@@ -81,12 +89,14 @@ def analyzeSDR(G): #Input: graph, Output: # spanning trees, # SDR, # b1-faulty S
 #    print("Number of spanning trees: " + str(sptreecount))
     print("Number of SDRs: " + str(len(SDR_list)))
 #    print("")
+    # Cache edge set once for repeated graph copies
+    cached_edges = G.edges()
     prob = []
     for SDR in SDR_list:
-        H = Graph(G.edges())
+        H = Graph(cached_edges)
         H.delete_edges(SDR)
         if len(H.cycle_basis()) > 0:
-            prob = prob + [SDR]
+            prob.append(SDR)
     print("Problem SDRs: " + str(len(prob)))
     pairs_collection = findsubsets(nonempty_pairs(EC), 3)
     print("Faulty SDRs: " + str(len(pairs_collection)))

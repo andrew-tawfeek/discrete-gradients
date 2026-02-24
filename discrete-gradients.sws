@@ -19,43 +19,39 @@ def Laplacian(K,d):
     return evenLaplacian(K,d+1) + oddLaplacian(K,d)
 
 def _orient_matching(matching):
-    clean_matching = []
-    for path in matching:
-        if len(path[0]) < len(path[1]):
-            clean_matching.append(path[::-1])
-        else:
-            clean_matching.append(path)
-    return clean_matching
+    return [path[::-1] if len(path[0]) < len(path[1]) else path for path in matching]
 
 def _filter_acyclic(all_matchings, hasse_graph):
+    HG = DiGraph(hasse_graph.edges(labels=False))
     res = []
     for matching in all_matchings:
         clean_matching = _orient_matching(matching)
-        HG = DiGraph(hasse_graph.edges())
         HG.reverse_edges(clean_matching)
         if HG.is_directed_acyclic():
             res.append(clean_matching)
+        # Undo the reversal instead of rebuilding the entire DiGraph
+        HG.reverse_edges([(e[1],e[0]) for e in clean_matching])
     return res
 
 def acyclicmatchings(K): #takes input complex K and returns list of acyclic matchings, esentially all possible gradients on K
-    hasse_graph = K.face_poset().hasse_diagram().to_directed().reverse()
-    hasse_graph = DiGraph(hasse_graph.edges(labels=False))
-    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))] #needs each element ordered higher to lower dim
+    hasse_graph = DiGraph(K.face_poset().hasse_diagram().to_directed().reverse().edges(labels=False))
+    all_matchings = list(IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))) #needs each element ordered higher to lower dim
     return _filter_acyclic(all_matchings, hasse_graph)
 
 def limited_acyclicmatchings(K,L):
     P = K.face_poset()
-    ignored_levels = [n for n in range(len(L)) if L[n] == len(K.faces()[n])] #if num crit cells is num faces, face to be deleted
+    faces = K.faces()
+    ignored_levels = set(n for n in range(len(L)) if L[n] == len(faces[n])) #if num crit cells is num faces, face to be deleted
     kept_elements = [elt for elt in list(P) if P.rank(elt) not in ignored_levels]
-    hasse_graph = P.subposet(kept_elements).hasse_diagram().to_directed().reverse()
-    hasse_graph = DiGraph(hasse_graph.edges(labels=False))
-    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))] #needs each element ordered higher to lower dim
+    hasse_graph = DiGraph(P.subposet(kept_elements).hasse_diagram().to_directed().reverse().edges(labels=False))
+    all_matchings = list(IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))) #needs each element ordered higher to lower dim
     return _filter_acyclic(all_matchings, hasse_graph)
 
 #takes input complex K and list L = [n_0, n_1, n_2, ..., n_dimK]
 #where the critical vector is [K_0 - n_1, K_1 - n_2, ..., K_dim(K) - n_dim(K)]
 def gradients(K,L):
-    reversal = [len(K.faces()[k]) - L[k] for k in range(len(L))]
+    faces = K.faces()
+    reversal = [len(faces[k]) - L[k] for k in range(len(L))]
     L = reversal
     KE = K.euler_characteristic()
     safety = sum((-1)^k*L[k] for k in range(len(L)))
@@ -65,20 +61,28 @@ def gradients(K,L):
     res = []
     d = dim(K)
     pool = limited_acyclicmatchings(K,L)
-    #num_cells_list = [len(K.faces()[n]) for n in [0..d]]
+    face_counts = [len(faces[n]) for n in range(d+1)]
     for matching in pool:
+        # Single-pass dimension counting instead of scanning matching per dimension
+        dim_counts = [0] * (d+1)
+        for pair in matching:
+            for cell in pair:
+                level = len(cell) - 1
+                if 0 <= level <= d:
+                    dim_counts[level] += 1
+        ok = True
         for n in range(0,d+1):
-            num_cells = len(K.faces()[n])
-            num_in_matching = len([tuple for tuple in matching if ((len(tuple[0]) == n+1) or (len(tuple[1]) == n+1))])
-            if L[n] != num_cells - num_in_matching: #checks correct num crit cells
+            if L[n] != face_counts[n] - dim_counts[n]: #checks correct num crit cells
+                ok = False
                 break
-            elif n==d:
-                res.append(matching)
+        if ok:
+            res.append(matching)
     return res
 
 def hasse_levels(K,L): #L is the list of levels desired (ideally adjacent)
     P = K.face_poset()
-    return P.subposet([x for x in list(P) if (P.rank(x) in L)])
+    L_set = set(L)
+    return P.subposet([x for x in list(P) if P.rank(x) in L_set])
 
 
 ##########
@@ -86,43 +90,42 @@ def hasse_levels(K,L): #L is the list of levels desired (ideally adjacent)
 ##########
 
 def morse_set_vectors(K,d):
-    L = [0 .. dim(K)]
-    for n in L:
-        L[n] = len(K.faces()[n])
+    faces = K.faces()
+    L = [len(faces[n]) for n in range(dim(K)+1)]
     LOW = min(L[d],L[d-1])
-    res = list(range(LOW+1))
+    res = []
     for n in range(LOW+1):
-        vec = []
-        for j in range(len(L)):
-            if j == d or j == d-1:
-                vec.append(L[j] - n)
-            else:
-                vec.append(L[j])
-        res[n] = vec
-    #res.sort()
-    #res.reverse()
+        vec = [L[j] - n if (j == d or j == d-1) else L[j] for j in range(len(L))]
+        res.append(vec)
     return res
 
 def limited_acyclicmatchings2(K,d):
     P = K.face_poset()
-    ignored_levels = [n for n in range(dim(K)) if n != d and n != d-1] #if num crit cells is num faces, face to be deleted
-    kept_elements = [elt for elt in list(P) if P.rank(elt) not in ignored_levels]
-    hasse_graph = P.subposet(kept_elements).hasse_diagram().to_directed().reverse()
-    hasse_graph = DiGraph(hasse_graph.edges(labels=False))
-    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))] #needs each element ordered higher to lower dim
+    kept_levels = {d, d-1}
+    kept_elements = [elt for elt in list(P) if P.rank(elt) in kept_levels]
+    hasse_graph = DiGraph(P.subposet(kept_elements).hasse_diagram().to_directed().reverse().edges(labels=False))
+    all_matchings = list(IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))) #needs each element ordered higher to lower dim
     return _filter_acyclic(all_matchings, hasse_graph)
 
 def strainer(K,d,pool,vec):
     res = []
     d = dim(K)
+    face_counts = [len(K.faces()[n]) for n in range(d+1)]
     for matching in pool:
+        # Single-pass dimension counting instead of scanning matching per dimension
+        dim_counts = [0] * (d+1)
+        for pair in matching:
+            for cell in pair:
+                level = len(cell) - 1
+                if 0 <= level <= d:
+                    dim_counts[level] += 1
+        ok = True
         for n in range(0,d+1):
-            num_cells = len(K.faces()[n])
-            num_in_matching = len([tuple for tuple in matching if ((len(tuple[0]) == n+1) or (len(tuple[1]) == n+1))])
-            if vec[n] != num_cells - num_in_matching: #checks correct num crit cells
+            if vec[n] != face_counts[n] - dim_counts[n]: #checks correct num crit cells
+                ok = False
                 break
-            elif n==d:
-                res.append(matching)
+        if ok:
+            res.append(matching)
     return res
 
 def grad_list(K,d):
@@ -130,8 +133,7 @@ def grad_list(K,d):
     #pool = limited_acyclicmatchings(K)
     grads = []
     pool = limited_acyclicmatchings2(K,d)
-    for k in range(len(vec_list)):
-        vec = vec_list[k]
+    for vec in vec_list:
         res = strainer(K,d,pool,vec)
         grads.append(len(res))
     return grads
@@ -204,17 +206,15 @@ def topaz(K):
 
 def boxedregion(K,d,num_matching): #input: complex K, dimension (for Laplacian) d, num matchings in boxed range [rem.]
     P = K.face_poset() #output: all acyclic matchings occuring in red box
-    keepers = [elt for elt in list(P) if P.rank(elt) in (d, d-1, d-2)]
-    hasse_graph = P.subposet(keepers).hasse_diagram().to_directed().reverse() #here on, the code from acyclicmatchings is copied
-    hasse_graph = DiGraph(hasse_graph.edges(labels=False))
-    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False))] #needs each element ordered higher to lower dim
-    res = _filter_acyclic(all_matchings, hasse_graph)
-    corrected_res = [x for x in res if len(x) == num_matching]
-    return corrected_res
+    rank_set = {d, d-1, d-2}
+    keepers = [elt for elt in list(P) if P.rank(elt) in rank_set]
+    hasse_graph = DiGraph(P.subposet(keepers).hasse_diagram().to_directed().reverse().edges(labels=False))
+    # Filter by matching size during enumeration instead of after
+    all_matchings = [x for x in IndependentSets(hasse_graph.to_undirected().line_graph(labels=False)) if len(x) == num_matching]
+    return _filter_acyclic(all_matchings, hasse_graph)
 
 def boxedregion2(K,d,n): #complex K, dimension Laplacian d, coeff of x^n
     P = K.face_poset()
-
     keepers_higher = []
     keepers_lower = []
     for elt in list(P):
@@ -226,14 +226,11 @@ def boxedregion2(K,d,n): #complex K, dimension Laplacian d, coeff of x^n
     keepers_total = list(set().union(keepers_higher,keepers_lower))
     hasse_graph_higher = P.subposet(keepers_higher).hasse_diagram().to_directed().reverse()
     hasse_graph_lower = P.subposet(keepers_lower).hasse_diagram().to_directed().reverse()
-    hasse_graph = P.subposet(keepers_total).hasse_diagram().to_directed().reverse()
-
+    hasse_graph = DiGraph(P.subposet(keepers_total).hasse_diagram().to_directed().reverse().edges(labels=False))
     all_matchings_higher = [x for x in IndependentSets(hasse_graph_higher.to_undirected().line_graph(labels=False)) if len(x) == n]
     all_matchings_lower = [x for x in IndependentSets(hasse_graph_lower.to_undirected().line_graph(labels=False)) if len(x) == n]
     all_matchings = all_matchings_higher + all_matchings_lower
-    res = _filter_acyclic(all_matchings, hasse_graph)
-    #corrected_res = [x for x in res if len(x) == n]
-    return res
+    return _filter_acyclic(all_matchings, hasse_graph)
 
 #returns LIST of acyclic matchings with those conditions
 #can go through list (within list?) checking that c_2 (e.g) many 2-dim cells (i.e. 3-tuples) are omitted?
@@ -242,4 +239,4 @@ def boxedregion2(K,d,n): #complex K, dimension Laplacian d, coeff of x^n
 ##### NEW (5/12/2025)
 
 def easycplx(cell_list): #for the lazy, takes [123,456] and understands what complex this is
-    return SimplicialComplex([[eval(x) for x in str(y)] for y in cell_list])
+    return SimplicialComplex([[int(x) for x in str(y)] for y in cell_list])

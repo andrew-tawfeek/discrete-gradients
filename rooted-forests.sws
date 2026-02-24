@@ -1,8 +1,5 @@
 def apply(L,fn):
-    res = []
-    for elt in L:
-        res = res + [fn(elt)]
-    return res
+    return [fn(elt) for elt in L]
 
 
 # Input: Simplicial complex K (d-dimensional)
@@ -14,12 +11,13 @@ def SpanningForests(K): #gives all the SPANNING forests of a simplicial complex 
     faceList = list(K.faces()[d])
     co_K = K.chain_complex()
     third_cond = len(faceList) - co_K.betti(d)
-    possible_forests = [x for x in list(powerset(faceList)) if len(x) == third_cond]
+    # Use Combinations to generate only subsets of the right size instead of filtering all of powerset
+    possible_forests = Combinations(faceList, third_cond)
     res = []
     for facet_list in possible_forests:
         F_test = SimplicialComplex(facet_list)
-        if F_test.homology()[dim(K)] == zero_hom_grp:
-            res = res + [facet_list]
+        if F_test.homology()[d] == zero_hom_grp:
+            res.append(facet_list)
     return res
 
 # Input: Triple (F,K,d) of a simplicial complex K dimension n, subset F of d-cells of K, dimension 0<=d<=n
@@ -29,7 +27,9 @@ def SpanningForests(K): #gives all the SPANNING forests of a simplicial complex 
 
 def is_forest(F,K,d):
     B = K.chain_complex().differential(d)
-    kept_rows = apply(F,list(K.faces()[d]).index)
+    face_list = list(K.faces()[d])
+    face_index = {face: i for i, face in enumerate(face_list)}
+    kept_rows = [face_index[f] for f in F]
     corresponding_columns = [vector(QQ,list(B.columns()[n])) for n in kept_rows]
     V = QQ^(len(B.rows()))
     return len(V.linear_dependence(corresponding_columns)) == 0
@@ -41,11 +41,12 @@ def is_forest(F,K,d):
 
 def is_root(R,G):
     d = dim(G)
-    R_bar = list(G.faces()[d-1])
-    for cell in R:
-        R_bar.remove(cell)
+    face_list = list(G.faces()[d-1])
+    R_set = set(R)
+    R_bar = [face for face in face_list if face not in R_set]
     B = G.chain_complex().differential(d)
-    kept_rows = apply(R_bar,list(G.faces()[d-1]).index)
+    face_index = {face: i for i, face in enumerate(face_list)}
+    kept_rows = [face_index[r] for r in R_bar]
     keyB_rows = [B.rows()[index] for index in kept_rows]
     keyB = Matrix(keyB_rows)
     if len(keyB.rows()) != len(keyB.columns()):
@@ -59,12 +60,18 @@ def is_root(R,G):
 # Note: Could use some optimization if intended to be used for large complexes.
 
 def all_forests(K,d):
-    faceList = K.faces()[d]
+    faceList = list(K.faces()[d])
+    # Precompute boundary matrix and index map once instead of per-call in is_forest
+    B = K.chain_complex().differential(d)
+    face_index = {face: i for i, face in enumerate(faceList)}
+    V = QQ^(len(B.rows()))
     possible_forests = list(powerset(faceList))[1:]
     res = []
     for F in possible_forests:
-        if is_forest(F,K,d):
-            res = res + [F]
+        kept_rows = [face_index[f] for f in F]
+        corresponding_columns = [vector(QQ,list(B.columns()[n])) for n in kept_rows]
+        if len(V.linear_dependence(corresponding_columns)) == 0:
+            res.append(F)
     return res
 
 
@@ -73,12 +80,20 @@ def all_forests(K,d):
 def all_roots(F):
     F = SimplicialComplex(F)
     d = dim(F)
-    faceList = F.faces()[d-1]
+    faceList = list(F.faces()[d-1])
+    # Precompute boundary matrix and index map once instead of per-call in is_root
+    B = F.chain_complex().differential(d)
+    face_index = {face: i for i, face in enumerate(faceList)}
     possible_roots = list(powerset(faceList))[1:-1]
     res = []
     for R in possible_roots:
-        if is_root(R,F):
-            res = res + [R]
+        R_set = set(R)
+        R_bar = [face for face in faceList if face not in R_set]
+        kept_rows = [face_index[r] for r in R_bar]
+        keyB_rows = [B.rows()[index] for index in kept_rows]
+        keyB = Matrix(keyB_rows)
+        if len(keyB.rows()) == len(keyB.columns()) and keyB.is_invertible():
+            res.append(R)
     return res
 
 
@@ -86,40 +101,40 @@ def all_roots(F):
 
 
 def rootedForests(K,d):
-    forestList = K.faces()[d]
-    rootList = K.faces()[d-1]
-    possible_forests = list(powerset(forestList))[1:]
-    possible_roots = list(powerset(rootList))[1:]
+    forestList = list(K.faces()[d])
+    rootList = list(K.faces()[d-1])
     D = K.chain_complex().differential(d)
-    Ld = list(K.faces()[d])
-    Ld.sort()
-    L_d = list(K.faces()[d-1])
-    L_d.sort()
+    Ld = sorted(forestList)
+    L_d = sorted(rootList)
+    # Precompute index dicts for O(1) lookup instead of O(n) .index() calls
+    Ld_index = {face: i for i, face in enumerate(Ld)}
+    L_d_index = {face: i for i, face in enumerate(L_d)}
+    num_lower = len(L_d)
     res = []
-    for F in possible_forests:
-        for R in possible_roots:
-            R_bar = list(K.faces()[d-1])
-            for cell in R:
-                R_bar.remove(cell)
-            if len(R_bar) == len(F): #|R_bar| = |F|
-                cols = [Ld.index(F[i]) for i in range(len(F))]
-                rows = [L_d.index(R_bar[i]) for i in range(len(R_bar))]
-                rows.sort()
-                cols.sort()
+    # Group by compatible sizes: |R_bar| must equal |F|, so |R| = num_lower - |F|
+    for k in range(1, len(Ld) + 1):
+        root_size = num_lower - k
+        if root_size < 1:
+            continue
+        for F in Combinations(forestList, k):
+            cols = sorted([Ld_index[F[i]] for i in range(len(F))])
+            for R in Combinations(rootList, root_size):
+                R_set = frozenset(R)
+                R_bar = [face for face in L_d if face not in R_set]
+                rows = sorted([L_d_index[r] for r in R_bar])
                 if D[rows,cols].det() != 0: #relative homology H_d(F,R) = 0
-                    F_res = apply(F,tuple)
-                    R_res = apply(R,tuple)
-                    F_res.sort()
-                    R_res.sort()
-                    res = res + [(F_res,R_res)] #apply function turns these from simplex cells to tuples in F and R, types in Sage
+                    F_res = sorted(apply(F,tuple))
+                    R_res = sorted(apply(R,tuple))
+                    res.append((F_res,R_res))
     return res
-
 
 def rootedForestsCount(K,d):
     S = rootedForests(K,d)
-    L = [0..len(K.faces()[d-1])]
-    for j in range(len(L)):
-        L[j] = len([x for x in S if len(x[1]) == j])
+    # Single pass over S instead of N separate linear scans
+    num_roots = len(list(K.faces()[d-1]))
+    L = [0] * (num_roots + 1)
+    for x in S:
+        L[len(x[1])] += 1
     return L
 
 
@@ -128,9 +143,11 @@ def rootedForestsCount(K,d):
 
 def rootedForestsList(K,d):
     S = rootedForests(K,d)
-    L = [0..len(K.faces()[d-1])]
-    for j in range(len(L)):
-        L[j] = [x for x in S if len(x[1]) == j]
+    # Single pass over S instead of N separate linear scans
+    num_roots = len(list(K.faces()[d-1]))
+    L = [[] for _ in range(num_roots + 1)]
+    for x in S:
+        L[len(x[1])].append(x)
     L.reverse()
     return L
 
@@ -141,10 +158,9 @@ def grad_list_raw(K,d):
     #pool = limited_acyclicmatchings(K)
     grads = []
     pool = limited_acyclicmatchings2(K,d)
-    for k in range(len(vec_list)):
-        vec = vec_list[k]
+    for vec in vec_list:
         res = strainer(K,d,pool,vec)
-        grads = grads + [res]
+        grads.append(res)
     return grads
 
 
@@ -153,22 +169,21 @@ def grad_list_raw(K,d):
 def inducedRootedForests(K,d,remove_grads = False):
     rawList = grad_list_raw(K,d)
     rootCells = apply(list(K.faces()[d-1]),tuple)
+    rootCells_set = set(rootCells)
     res = []
     for n in range(len(rawList)):
         res_temp = []
         gradient_list = rawList[n]
         for grad in gradient_list:
             induced_forest = [grad[m][0] for m in range(len(grad))]
-            induced_root = list(rootCells) #this is where it gets complicated, need to look at elts not in gradient
-            for m in range(len(grad)):
-                induced_root.remove(grad[m][1])
+            matched_roots = {grad[m][1] for m in range(len(grad))}
+            induced_root = sorted(rootCells_set - matched_roots)
             induced_forest.sort()
-            induced_root.sort()
             if remove_grads:
-                res_temp = res_temp + [(induced_forest,induced_root)]
+                res_temp.append((induced_forest,induced_root))
             else:
-                res_temp = res_temp + [(induced_forest,induced_root,grad)] #where to decide whether or not to put grad as third argument
-        res = res + [res_temp]
+                res_temp.append((induced_forest,induced_root,grad)) #where to decide whether or not to put grad as third argument
+        res.append(res_temp)
     return res
 
 
@@ -179,12 +194,9 @@ def rootedForest_hasse(F,R,im = False):
     H = hasse_levels(K,[d-1,d])
     H_elts = []
     for n in range(d-1,d+1):
-        H_elts = H_elts + apply(list(K.faces()[n]),list)
-    R = apply(R,list)
-    for cell in R:
-        if cell in H_elts:
-            H_elts.remove(cell)
-    H_elts = apply(H_elts,tuple)
+        H_elts.extend(apply(list(K.faces()[n]),list))
+    R_tuples = {tuple(r) for r in R}
+    H_elts = [tuple(e) for e in H_elts if tuple(e) not in R_tuples]
     res = H.subposet(H_elts)
     if not im:
         return res
@@ -199,8 +211,10 @@ def problems(K,d):
     induced_list = []
     for n in range(len(L)):
         induced_list = induced_list + L[n]
+    # Convert to set of hashable tuples for O(1) lookup instead of O(n) list scan
+    induced_set = set((tuple(x[0]), tuple(x[1])) for x in induced_list)
     rootedforest_list = rootedForests(K,d)
-    res = [x for x in rootedforest_list if x not in induced_list]
+    res = [x for x in rootedforest_list if (tuple(x[0]), tuple(x[1])) not in induced_set]
     return res
 
 
